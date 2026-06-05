@@ -6,11 +6,11 @@ from PyQt6.QtWidgets import (
     QApplication,
 )
 
-from windows.BlackboxExtrarctor import BlackboxExtractorWindow
+from windows.BetaflightTuningWindow import BetaflightTuningWindow
 
 def main() -> int:
     app = QApplication(sys.argv)
-    window = BlackboxExtractorWindow()
+    window = BetaflightTuningWindow()
     window.show()
     return app.exec()
 

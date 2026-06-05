@@ -51,10 +51,10 @@ class BlackboxExtractorWorker(QObject):
         client: MspClient | None = None
         try:
             self.output_path.parent.mkdir(parents=True, exist_ok=True)
-            self.log.emit(f"Ouverture du port {self.port}...")
+            self.log.emit(f"Opening port {self.port}...")
             client = MspClient(self.port)
 
-            self.log.emit("Lecture du resume Dataflash...")
+            self.log.emit("Reading Dataflash summary...")
             summary = parse_dataflash_summary(client.command(MSP_DATAFLASH_SUMMARY))
             self.log.emit(
                 "Dataflash: "
@@ -63,30 +63,30 @@ class BlackboxExtractorWorker(QObject):
             )
 
             if not summary.supported:
-                raise MspError("Ce controleur ne declare pas de Dataflash compatible.")
+                raise MspError("This flight controller does not report compatible Dataflash.")
             if not summary.ready:
-                raise MspError("La Dataflash n'est pas prete.")
+                raise MspError("Dataflash is not ready.")
             if summary.used_size <= 0:
-                raise MspError("Aucune Blackbox n'est presente dans la Dataflash.")
+                raise MspError("No Blackbox log is present in Dataflash.")
 
             written = 0
             with self.output_path.open("wb") as output_file:
                 while written < summary.used_size:
                     if self.cancel_requested:
-                        raise MspError("Extraction annulee.")
+                        raise MspError("Extraction cancelled.")
 
                     size = min(READ_CHUNK_SIZE, summary.used_size - written)
                     request = struct.pack("<IH", written, size)
                     payload = client.command(MSP_DATAFLASH_READ, request)
                     data = parse_dataflash_read(payload, written)
                     if not data:
-                        raise MspError("Bloc Dataflash vide.")
+                        raise MspError("Empty Dataflash block.")
 
                     output_file.write(data[:size])
                     written += min(len(data), size)
                     self.progress.emit(int((written / summary.used_size) * 100))
 
-            self.finished.emit(True, f"Extraction terminee: {self.output_path}")
+            self.finished.emit(True, f"Extraction complete: {self.output_path}")
         except Exception as exc:
             self.finished.emit(False, str(exc))
         finally:
@@ -104,19 +104,19 @@ class BlackboxExtractorWindow(QMainWindow):
         self.resize(860, 620)
 
         self.port_select = QComboBox()
-        self.refresh_button = QPushButton("Rafraichir")
+        self.refresh_button = QPushButton("Refresh")
         self.output_dir_input = QLineEdit(str(Path.cwd() / "blackbox"))
-        self.output_dir_button = QPushButton("Parcourir")
+        self.output_dir_button = QPushButton("Browse")
         self.file_name_input = QLineEdit(self.default_file_name())
-        self.extract_button = QPushButton("Extraire la Blackbox")
-        self.stop_button = QPushButton("Arreter")
+        self.extract_button = QPushButton("Extract Blackbox")
+        self.stop_button = QPushButton("Stop")
         self.stop_button.setEnabled(False)
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
-        self.status_label = QLabel("Pret a extraire une Blackbox Betaflight.")
+        self.status_label = QLabel("Ready to extract a Betaflight Blackbox log.")
         self.log_output = QPlainTextEdit()
         self.log_output.setReadOnly(True)
-        self.log_output.setPlaceholderText("Les messages d'extraction apparaitront ici.")
+        self.log_output.setPlaceholderText("Extraction messages will appear here.")
 
         self.build_layout()
         self.connect_signals()
@@ -131,8 +131,8 @@ class BlackboxExtractorWindow(QMainWindow):
         title = QLabel("Extraction Blackbox")
         title.setObjectName("title")
         subtitle = QLabel(
-            "Connecte un controleur de vol Betaflight en USB, choisis le port, "
-            "puis lance l'extraction vers un fichier .bbl local."
+            "Connect a Betaflight flight controller over USB, choose the port, "
+            "then extract the log to a local .bbl file."
         )
         subtitle.setWordWrap(True)
         subtitle.setObjectName("subtitle")
@@ -144,13 +144,13 @@ class BlackboxExtractorWindow(QMainWindow):
         port_row = QHBoxLayout()
         port_row.addWidget(self.port_select, stretch=1)
         port_row.addWidget(self.refresh_button)
-        form.addRow("Port USB", port_row)
+        form.addRow("USB port", port_row)
 
         output_row = QHBoxLayout()
         output_row.addWidget(self.output_dir_input, stretch=1)
         output_row.addWidget(self.output_dir_button)
-        form.addRow("Dossier", output_row)
-        form.addRow("Nom du fichier", self.file_name_input)
+        form.addRow("Folder", output_row)
+        form.addRow("File name", self.file_name_input)
 
         action_row = QHBoxLayout()
         action_row.addWidget(self.extract_button)
@@ -208,10 +208,10 @@ class BlackboxExtractorWindow(QMainWindow):
             self.port_select.addItem(port.label, port.device)
 
         if not ports:
-            self.port_select.addItem("Aucun port detecte", None)
+            self.port_select.addItem("No serial port detected", None)
             self.append_log(
-                "Aucun port serie detecte. Verifie que le controleur est branche "
-                "en USB et que pyserial est installe."
+                "No serial port detected. Check that the flight controller is connected "
+                "over USB and that pyserial is installed."
             )
         elif current_device:
             index = self.port_select.findData(current_device)
@@ -221,7 +221,7 @@ class BlackboxExtractorWindow(QMainWindow):
     def choose_output_dir(self) -> None:
         selected = QFileDialog.getExistingDirectory(
             self,
-            "Choisir le dossier de sortie",
+            "Choose output folder",
             self.output_dir_input.text(),
         )
         if selected:
@@ -232,8 +232,8 @@ class BlackboxExtractorWindow(QMainWindow):
         if not port:
             QMessageBox.warning(
                 self,
-                "Port USB manquant",
-                "Aucun port serie Betaflight n'est selectionne.",
+                "Missing USB port",
+                "No Betaflight serial port is selected.",
             )
             return
 
@@ -242,8 +242,8 @@ class BlackboxExtractorWindow(QMainWindow):
         if not file_name:
             QMessageBox.warning(
                 self,
-                "Nom de fichier manquant",
-                "Indique un nom pour le fichier Blackbox extrait.",
+                "Missing file name",
+                "Enter a name for the extracted Blackbox file.",
             )
             return
 
@@ -260,18 +260,18 @@ class BlackboxExtractorWindow(QMainWindow):
 
         self.set_extracting(True)
         self.progress_bar.setValue(0)
-        self.append_log(f"Port selectionne: {port}")
-        self.append_log(f"Fichier de sortie: {output_path}")
+        self.append_log(f"Selected port: {port}")
+        self.append_log(f"Output file: {output_path}")
         self.worker_thread.start()
 
     def stop_extraction(self) -> None:
         if self.worker is not None:
-            self.append_log("Arret demande.")
+            self.append_log("Stop requested.")
             self.worker.cancel()
 
     def extraction_finished(self, success: bool, message: str) -> None:
         self.set_extracting(False)
-        self.status_label.setText("Extraction terminee." if success else "Extraction echouee.")
+        self.status_label.setText("Extraction complete." if success else "Extraction failed.")
         self.append_log(message)
         if success:
             self.progress_bar.setValue(100)
@@ -288,7 +288,7 @@ class BlackboxExtractorWindow(QMainWindow):
         self.extract_button.setEnabled(not extracting)
         self.refresh_button.setEnabled(not extracting)
         self.stop_button.setEnabled(extracting)
-        self.status_label.setText("Extraction en cours..." if extracting else "Pret.")
+        self.status_label.setText("Extracting..." if extracting else "Ready.")
 
     def append_log(self, message: str) -> None:
         if not message:

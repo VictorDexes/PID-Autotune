@@ -115,7 +115,7 @@ def discover_serial_ports() -> list[SerialPort]:
 
 def parse_dataflash_summary(payload: bytes) -> DataflashSummary:
     if len(payload) < 13:
-        raise MspError("Resume Dataflash too short.")
+        raise MspError("Dataflash summary is too short.")
 
     flags = payload[0]
     sectors, total_size, used_size = struct.unpack_from("<III", payload, 1)
@@ -130,11 +130,11 @@ def parse_dataflash_summary(payload: bytes) -> DataflashSummary:
 
 def parse_dataflash_read(payload: bytes, expected_address: int) -> bytes:
     if len(payload) < 4:
-        raise MspError("Bloc Dataflash trop court.")
+        raise MspError("Dataflash block is too short.")
 
     address = struct.unpack_from("<I", payload, 0)[0]
     if address != expected_address:
         raise MspError(
-            f"Unexpected dataflash adress: {address}, expected {expected_address}."
+            f"Unexpected Dataflash address: {address}, expected {expected_address}."
         )
     return payload[4:]

@@ -289,7 +289,7 @@ class FilterTuneTab(QWidget):
         self.analyze_button = QPushButton("Analyze Blackbox")
         self.apply_button = QPushButton("Apply Proposed Filters")
         self.apply_button.setEnabled(False)
-        self.summary_label = QLabel("Select a decoded Blackbox CSV, or a .bbl file to use the BF 4.5 baseline.")
+        self.summary_label = QLabel("Select a raw .bbl log or a decoded Blackbox CSV for frequency-based filter proposals.")
         self.summary_label.setWordWrap(True)
         self.table = QTableWidget(0, 2)
         self.log_output = QPlainTextEdit()
@@ -341,7 +341,15 @@ class FilterTuneTab(QWidget):
         if not path.exists():
             QMessageBox.warning(self, "Missing Blackbox file", "Choose an existing Blackbox file first.")
             return
-        self.proposal = analyze_blackbox(path)
+        try:
+            self.proposal = analyze_blackbox(path)
+        except Exception as exc:
+            self.apply_button.setEnabled(False)
+            self.summary_label.setText("Blackbox analysis failed.")
+            self.log_output.clear()
+            self.append_log(str(exc))
+            QMessageBox.warning(self, "Blackbox analysis failed", str(exc))
+            return
         self.summary_label.setText(self.proposal.summary)
         self.table.setRowCount(len(self.proposal.settings))
         for row, (name, value) in enumerate(self.proposal.settings.items()):

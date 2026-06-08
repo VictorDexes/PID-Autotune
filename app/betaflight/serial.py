@@ -1,5 +1,6 @@
 import struct
 from dataclasses import dataclass
+from time import monotonic
 
 try:
     import serial
@@ -72,11 +73,15 @@ class MspClient:
         return self._read_response(command_id)
 
     def _read_response(self, expected_command_id: int) -> bytes:
-        header = self._read_exact(3)
-        if header != b"$M>":
+        while True:
+            header = self._read_header()
+            if header == b"$M<":
+                self._discard_v1_frame()
+                continue
             if header == b"$M!":
                 raise MspError(f"Betaflight has refused the command {expected_command_id}.")
-            raise MspError(f"Invalid MSP response: {header!r}")
+            if header == b"$M>":
+                break
 
         payload_size = self._read_exact(1)[0]
         command_id = self._read_exact(1)[0]
@@ -95,6 +100,24 @@ class MspClient:
             )
 
         return payload
+
+    def _read_header(self) -> bytes:
+        deadline = monotonic() + 5
+        window = bytearray()
+        while monotonic() < deadline:
+            chunk = self.connection.read(1)
+            if not chunk:
+                continue
+            window.extend(chunk)
+            if len(window) > 3:
+                del window[0]
+            if len(window) == 3 and bytes(window) in (b"$M>", b"$M!", b"$M<"):
+                return bytes(window)
+        raise MspError("Timeout waiting for MSP response header.")
+
+    def _discard_v1_frame(self) -> None:
+        payload_size = self._read_exact(1)[0]
+        self._read_exact(1 + payload_size + 1)
 
     def _read_exact(self, size: int) -> bytes:
         data = self.connection.read(size)
@@ -137,4 +160,9 @@ def parse_dataflash_read(payload: bytes, expected_address: int) -> bytes:
         raise MspError(
             f"Unexpected Dataflash address: {address}, expected {expected_address}."
         )
-    return payload[4:]
+    data = payload[4:]
+    if len(data) >= 3:
+        read_length, compression = struct.unpack_from("<HB", data, 0)
+        if compression == 0 and read_length == len(data) - 3:
+            return data[3 : 3 + read_length]
+    return data

@@ -12,9 +12,9 @@ Python/PyQt6 desktop app for Betaflight Blackbox extraction and first-pass filte
 - One-click Blackbox setup apply through the Betaflight CLI.
 - Automatic `diff all` backup before applying Blackbox or filter settings.
 - Dataflash extraction to a local `.bbl` file.
-- Filter tuning page that proposes BF 4.5 filter values before applying them.
+- Filter tuning page that parses raw `.bbl` logs or decoded CSV logs and proposes BF 4.5 filter values before applying them.
 
-Raw `.bbl` frequency parsing is not implemented yet. Export a decoded CSV from Blackbox Explorer for log-based peak detection; selecting a `.bbl` file currently proposes the conservative BF 4.5 baseline from the supplied tuning PDF.
+The parser extracts Betaflight Blackbox headers plus `I`/`P` main frames, then uses gyro and motor fields to estimate frame resonance, RPM filter fade-in, and dynamic notch count. If parsing fails, the app falls back to the conservative BF 4.5 baseline from the supplied tuning PDF.
 
 ## Installation
 

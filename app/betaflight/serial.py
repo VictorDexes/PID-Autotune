@@ -1,6 +1,6 @@
 import struct
 from dataclasses import dataclass
-from time import monotonic
+from time import monotonic, sleep
 
 try:
     import serial
@@ -50,6 +50,7 @@ class MspClient:
             timeout=2,
             write_timeout=2,
         )
+        sleep(0.2)
 
     def close(self) -> None:
         self.connection.close()

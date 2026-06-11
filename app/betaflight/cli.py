@@ -36,17 +36,36 @@ class BetaflightCli:
             timeout=READ_TIMEOUT,
             write_timeout=2,
         )
+        self.reboot_expected = False
+        self.in_cli = False
         self._enter_cli()
 
     def close(self) -> None:
-        if self.connection.is_open:
-            self.connection.close()
+        try:
+            if self.connection.is_open:
+                self.exit_cli()
+                self.connection.close()
+        except Exception:
+            pass
 
     def _enter_cli(self) -> None:
         self.connection.reset_input_buffer()
         self.connection.write(b"#\r\n")
         self.connection.flush()
         self._read_until_prompt(timeout=5)
+        self.in_cli = True
+
+    def exit_cli(self) -> None:
+        if self.reboot_expected or not self.in_cli:
+            return
+        try:
+            self.connection.write(b"exit\r\n")
+            self.connection.flush()
+            sleep(0.2)
+        except Exception:
+            pass
+        finally:
+            self.in_cli = False
 
     def _read_until_prompt(self, timeout: float = 4) -> str:
         end_at = monotonic() + timeout
@@ -71,6 +90,43 @@ class BetaflightCli:
         self.connection.write(command.encode("ascii", errors="ignore") + b"\r\n")
         self.connection.flush()
         return self._clean_response(command, self._read_until_prompt(timeout=timeout))
+
+    def save_and_reboot(self) -> str:
+        self.reboot_expected = True
+        self.in_cli = False
+        try:
+            self.connection.write(b"save\r\n")
+            self.connection.flush()
+            response = self._read_until_disconnect_or_prompt(timeout=3)
+            cleaned = self._clean_response("save", response)
+            if cleaned:
+                return f"{cleaned}\nFlight controller reboot detected."
+        except Exception as exc:
+            if _is_expected_reboot_error(exc):
+                return "Settings saved. Flight controller reboot detected."
+            raise
+        return "Settings saved. Flight controller is rebooting."
+
+    def _read_until_disconnect_or_prompt(self, timeout: float) -> str:
+        end_at = monotonic() + timeout
+        received = bytearray()
+
+        while monotonic() < end_at:
+            try:
+                chunk = self.connection.read(256)
+            except Exception as exc:
+                if _is_expected_reboot_error(exc):
+                    break
+                raise
+            if chunk:
+                received.extend(chunk)
+                text = received.decode(errors="replace")
+                if text.rstrip().endswith("#"):
+                    return text
+            else:
+                sleep(0.02)
+
+        return received.decode(errors="replace")
 
     def _clean_response(self, command: str, response: str) -> str:
         lines = response.replace("\r", "").split("\n")
@@ -125,5 +181,18 @@ class BetaflightCli:
         for name, value in settings.items():
             output.append(self.command(f"set {name} = {value}"))
         if save:
-            output.append(self.command("save", timeout=2))
+            output.append(self.save_and_reboot())
         return "\n".join(item for item in output if item)
+
+
+def _is_expected_reboot_error(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "clearcommerror" in text
+        or "device reports readiness to read but returned no data" in text
+        or "the handle is invalid" in text
+        or "access is denied" in text
+        or "port is closed" in text
+        or "permissionerror" in type(exc).__name__.lower()
+        or "serialexception" in type(exc).__name__.lower()
+    )
